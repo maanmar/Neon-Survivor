@@ -1,36 +1,1539 @@
-# This is a basic workflow to help you get started with Actions
+name: Build Desi Turbo Rickshaw APK
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: [ main, master ]
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  build-apk:
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Create Android project structure and configs
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          mkdir -p app/src/main/java/com/maan/desiturbo
+          mkdir -p app/src/main/res/drawable
+
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "DesiTurboRickshaw"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          EOF
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.nonTransitiveRClass=true
+          EOF
+
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.maan.desiturbo'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "com.maan.desiturbo"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              buildTypes {
+                  debug {
+                      minifyEnabled false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.VIBRATE" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/ic_launcher"
+                  android:label="Desi Turbo"
+                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="portrait"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/drawable/ic_launcher.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path android:fillColor="#16212E" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#189644" android:pathData="M24,30h60v50h-60z"/>
+              <path android:fillColor="#FFCD14" android:pathData="M26,48h56v30h-56z"/>
+              <path android:fillColor="#87E1FF" android:pathData="M34,34h40v12h-40z"/>
+              <path android:fillColor="#FFFA90" android:pathData="M48,22h12v10h-12z"/>
+          </vector>
+          EOF
+
+      - name: Write MainActivity and SoundEngine
+        run: |
+          cat << 'EOF' > app/src/main/java/com/maan/desiturbo/MainActivity.java
+          package com.maan.desiturbo;
+
+          import android.app.Activity;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.view.View;
+          import android.view.WindowInsets;
+          import android.view.WindowInsetsController;
+          import android.view.WindowManager;
+
+          public class MainActivity extends Activity {
+              private GameView gameView;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                      WindowManager.LayoutParams lp = getWindow().getAttributes();
+                      lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                      getWindow().setAttributes(lp);
+                  }
+                  gameView = new GameView(this);
+                  setContentView(gameView);
+                  hideSystemUI();
+              }
+
+              private void hideSystemUI() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                      getWindow().setDecorFitsSystemWindows(false);
+                      WindowInsetsController controller = getWindow().getInsetsController();
+                      if (controller != null) {
+                          controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                          controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                      }
+                  } else {
+                      View decor = getWindow().getDecorView();
+                      decor.setSystemUiVisibility(
+                          View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                          | View.SYSTEM_UI_FLAG_FULLSCREEN
+                          | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                          | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                          | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                          | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                      );
+                  }
+              }
+
+              @Override
+              public void onWindowFocusChanged(boolean hasFocus) {
+                  super.onWindowFocusChanged(hasFocus);
+                  if (hasFocus) {
+                      hideSystemUI();
+                  }
+              }
+
+              @Override
+              protected void onResume() {
+                  super.onResume();
+                  if (gameView != null) gameView.resume();
+              }
+
+              @Override
+              protected void onPause() {
+                  super.onPause();
+                  if (gameView != null) gameView.pause();
+              }
+
+              @Override
+              protected void onDestroy() {
+                  super.onDestroy();
+                  if (gameView != null) gameView.release();
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/maan/desiturbo/SoundEngine.java
+          package com.maan.desiturbo;
+
+          import android.media.AudioAttributes;
+          import android.media.AudioFormat;
+          import android.media.AudioTrack;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.Executors;
+
+          public class SoundEngine {
+              private static final int SAMPLE_RATE = 22050;
+              private final ExecutorService executor = Executors.newSingleThreadExecutor();
+              private volatile boolean muted = false;
+
+              public boolean isMuted() {
+                  return muted;
+              }
+
+              public void toggleMute() {
+                  muted = !muted;
+              }
+
+              public void playCoin() {
+                  if (muted) return;
+                  executor.execute(() -> playSweep(880, 1480, 110, 0.28, false));
+              }
+
+              public void playPowerup() {
+                  if (muted) return;
+                  executor.execute(() -> {
+                      playSweep(520, 780, 90, 0.28, false);
+                      playSweep(780, 1180, 120, 0.28, false);
+                  });
+              }
+
+              public void playHorn() {
+                  if (muted) return;
+                  executor.execute(() -> {
+                      playDualTone(415, 523, 130, 0.35);
+                      try { Thread.sleep(55); } catch (InterruptedException ignored) {}
+                      playDualTone(415, 523, 190, 0.35);
+                  });
+              }
+
+              public void playTurbo() {
+                  if (muted) return;
+                  executor.execute(() -> playSweep(260, 920, 260, 0.32, false));
+              }
+
+              public void playSmash() {
+                  if (muted) return;
+                  executor.execute(() -> playSweep(220, 65, 160, 0.42, true));
+              }
+
+              public void playCrash() {
+                  if (muted) return;
+                  executor.execute(() -> playSweep(190, 42, 340, 0.48, true));
+              }
+
+              private void playSweep(double startHz, double endHz, int ms, double volume, boolean noise) {
+                  int count = (SAMPLE_RATE * ms) / 1000;
+                  short[] samples = new short[count];
+                  double phase = 0;
+                  long seed = System.nanoTime();
+                  for (int i = 0; i < count; i++) {
+                      double t = (double) i / count;
+                      double freq = startHz + (endHz - startHz) * t;
+                      phase += 2.0 * Math.PI * freq / SAMPLE_RATE;
+                      double env = (1.0 - t) * (i < 120 ? (i / 120.0) : 1.0);
+                      double wave = Math.sin(phase);
+                      if (noise) {
+                          seed = (seed * 1103515245L + 12345L) & 0x7fffffffL;
+                          double n = ((seed / (double) 0x7fffffffL) * 2.0 - 1.0);
+                          wave = wave * 0.45 + n * 0.55;
+                      }
+                      samples[i] = (short) (wave * env * volume * Short.MAX_VALUE);
+                  }
+                  writeTrack(samples);
+              }
+
+              private void playDualTone(double hz1, double hz2, int ms, double volume) {
+                  int count = (SAMPLE_RATE * ms) / 1000;
+                  short[] samples = new short[count];
+                  for (int i = 0; i < count; i++) {
+                      double t = (double) i / count;
+                      double env = (1.0 - 0.35 * t) * (i < 100 ? (i / 100.0) : 1.0);
+                      double s1 = Math.sin(2.0 * Math.PI * hz1 * i / SAMPLE_RATE);
+                      double s2 = Math.sin(2.0 * Math.PI * hz2 * i / SAMPLE_RATE);
+                      double sq = (s1 + s2) * 0.5;
+                      sq = Math.max(-0.85, Math.min(0.85, sq * 1.4));
+                      samples[i] = (short) (sq * env * volume * Short.MAX_VALUE);
+                  }
+                  writeTrack(samples);
+              }
+
+              private void writeTrack(short[] samples) {
+                  AudioTrack track = null;
+                  try {
+                      int minBuf = AudioTrack.getMinBufferSize(
+                          SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT
+                      );
+                      int bufBytes = Math.max(minBuf, samples.length * 2);
+                      track = new AudioTrack.Builder()
+                          .setAudioAttributes(new AudioAttributes.Builder()
+                              .setUsage(AudioAttributes.USAGE_GAME)
+                              .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                              .build())
+                          .setAudioFormat(new AudioFormat.Builder()
+                              .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                              .setSampleRate(SAMPLE_RATE)
+                              .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                              .build())
+                          .setBufferSizeInBytes(bufBytes)
+                          .setTransferMode(AudioTrack.MODE_STATIC)
+                          .build();
+                      track.write(samples, 0, samples.length);
+                      track.play();
+                      Thread.sleep((samples.length * 1000L) / SAMPLE_RATE + 20);
+                  } catch (Throwable ignored) {
+                  } finally {
+                      if (track != null) {
+                          try { track.stop(); } catch (Throwable ignored) {}
+                          try { track.release(); } catch (Throwable ignored) {}
+                      }
+                  }
+              }
+
+              public void release() {
+                  executor.shutdownNow();
+              }
+          }
+          EOF
+
+      - name: Write GameView part 1
+        run: |
+          cat << 'EOF' > app/src/main/java/com/maan/desiturbo/GameView.java
+          package com.maan.desiturbo;
+
+          import android.content.Context;
+          import android.content.SharedPreferences;
+          import android.graphics.Canvas;
+          import android.graphics.Color;
+          import android.graphics.LinearGradient;
+          import android.graphics.Paint;
+          import android.graphics.RectF;
+          import android.graphics.Shader;
+          import android.graphics.Typeface;
+          import android.os.Build;
+          import android.os.VibrationEffect;
+          import android.os.Vibrator;
+          import android.view.MotionEvent;
+          import android.view.SurfaceHolder;
+          import android.view.SurfaceView;
+
+          import java.util.ArrayList;
+          import java.util.Iterator;
+          import java.util.List;
+          import java.util.Random;
+
+          public class GameView extends SurfaceView implements SurfaceHolder.Callback, Runnable {
+              private static final int STATE_MENU = 0;
+              private static final int STATE_PLAYING = 1;
+              private static final int STATE_PAUSED = 2;
+              private static final int STATE_GAME_OVER = 3;
+
+              private static final int RIDE_AUTO = 0;
+              private static final int RIDE_TRACTOR = 1;
+              private static final int RIDE_BULLET = 2;
+
+              private static final int OBS_CAR = 0;
+              private static final int OBS_TRUCK = 1;
+              private static final int OBS_BARRICADE = 2;
+              private static final int OBS_COW = 3;
+
+              private static final int ITEM_COIN = 0;
+              private static final int ITEM_CHAI = 1;
+              private static final int ITEM_SHIELD = 2;
+
+              private static class Obstacle {
+                  int type;
+                  int lane;
+                  float x, y, w, h, speedFactor;
+                  int color;
+                  boolean scared;
+                  float vx;
+              }
+
+              private static class Pickup {
+                  int type;
+                  int lane;
+                  float x, y, r;
+                  float phase;
+              }
+
+              private static class Particle {
+                  float x, y, vx, vy, size, life, maxLife;
+                  int color;
+              }
+
+              private static class FloatText {
+                  String text;
+                  float x, y, vy, life;
+                  int color;
+              }
+
+              private static class Scenery {
+                  float y;
+                  boolean leftSide;
+                  int kind;
+              }
+
+              private Thread gameThread;
+              private volatile boolean running = false;
+              private boolean surfaceReady = false;
+
+              private final SurfaceHolder holder;
+              private final SoundEngine sound;
+              private final SharedPreferences prefs;
+              private final Vibrator vibrator;
+              private final Random rng = new Random();
+
+              private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+              private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+              private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+              private int width = 1080;
+              private int height = 2340;
+              private float roadLeft, roadRight, roadWidth, laneWidth;
+
+              private int state = STATE_MENU;
+              private int selectedRide = RIDE_AUTO;
+
+              private int playerLane = 1;
+              private float playerX, playerY, playerW, playerH;
+              private float playerTilt = 0f;
+              private int hp = 3;
+              private int maxHp = 3;
+              private float invulnTimer = 0f;
+              private boolean hasShield = false;
+
+              private float nitro = 40f;
+              private boolean nitroActive = false;
+              private float hornCooldown = 0f;
+              private float hornWaveRadius = 0f;
+              private float hornWaveAlpha = 0f;
+
+              private float baseSpeed = 620f;
+              private float currentSpeed = 620f;
+              private float distance = 0f;
+              private int score = 0;
+              private int runCoins = 0;
+              private int bestScore = 0;
+              private int totalCoins = 0;
+
+              private float roadScroll = 0f;
+              private float spawnTimer = 0f;
+              private float pickupTimer = 0f;
+              private float shakeTimer = 0f;
+              private float shakeMag = 0f;
+              private float menuPulse = 0f;
+
+              private final List<Obstacle> obstacles = new ArrayList<>();
+              private final List<Pickup> pickups = new ArrayList<>();
+              private final List<Particle> particles = new ArrayList<>();
+              private final List<FloatText> floatTexts = new ArrayList<>();
+              private final List<Scenery> sceneries = new ArrayList<>();
+
+              private float touchStartX, touchStartY;
+              private boolean swipeHandled = false;
+
+              private final RectF btnPlay = new RectF();
+              private final RectF btnRide0 = new RectF();
+              private final RectF btnRide1 = new RectF();
+              private final RectF btnRide2 = new RectF();
+              private final RectF btnHorn = new RectF();
+              private final RectF btnNitro = new RectF();
+              private final RectF btnPause = new RectF();
+              private final RectF btnMute = new RectF();
+              private final RectF btnRestart = new RectF();
+              private final RectF btnMenu = new RectF();
+
+              public GameView(Context context) {
+                  super(context);
+                  holder = getHolder();
+                  holder.addCallback(this);
+                  sound = new SoundEngine();
+                  prefs = context.getSharedPreferences("desi_turbo_prefs", Context.MODE_PRIVATE);
+                  vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+
+                  bestScore = prefs.getInt("best_score", 0);
+                  totalCoins = prefs.getInt("total_coins", 0);
+                  selectedRide = prefs.getInt("selected_ride", RIDE_AUTO);
+
+                  strokePaint.setStyle(Paint.Style.STROKE);
+                  strokePaint.setStrokeJoin(Paint.Join.ROUND);
+                  strokePaint.setStrokeCap(Paint.Cap.ROUND);
+                  textPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+
+                  setFocusable(true);
+              }
+
+              private void computeLayout(int w, int h) {
+                  width = Math.max(1, w);
+                  height = Math.max(1, h);
+                  roadWidth = width * 0.78f;
+                  roadLeft = (width - roadWidth) * 0.5f;
+                  roadRight = roadLeft + roadWidth;
+                  laneWidth = roadWidth / 4f;
+
+                  playerY = height * 0.76f;
+                  updatePlayerDimensions();
+                  playerX = laneCenter(playerLane);
+
+                  float pad = width * 0.04f;
+                  float topY = height * 0.045f;
+                  float iconSz = width * 0.115f;
+                  btnPause.set(width - pad - iconSz, topY, width - pad, topY + iconSz);
+                  btnMute.set(btnPause.left - pad * 0.6f - iconSz, topY, btnPause.left - pad * 0.6f, topY + iconSz);
+
+                  float ctrlR = width * 0.17f;
+                  float ctrlY = height - height * 0.085f;
+                  btnHorn.set(pad, ctrlY - ctrlR, pad + ctrlR * 1.9f, ctrlY + ctrlR * 0.25f);
+                  btnNitro.set(width - pad - ctrlR * 1.9f, ctrlY - ctrlR, width - pad, ctrlY + ctrlR * 0.25f);
+
+                  float cardW = (width - pad * 4f) / 3f;
+                  float cardH = height * 0.17f;
+                  float cardY = height * 0.50f;
+                  btnRide0.set(pad, cardY, pad + cardW, cardY + cardH);
+                  btnRide1.set(btnRide0.right + pad, cardY, btnRide0.right + pad + cardW, cardY + cardH);
+                  btnRide2.set(btnRide1.right + pad, cardY, btnRide1.right + pad + cardW, cardY + cardH);
+
+                  btnPlay.set(width * 0.14f, height * 0.73f, width * 0.86f, height * 0.82f);
+                  btnRestart.set(width * 0.14f, height * 0.60f, width * 0.86f, height * 0.685f);
+                  btnMenu.set(width * 0.22f, height * 0.71f, width * 0.78f, height * 0.78f);
+
+                  if (sceneries.isEmpty()) {
+                      for (int i = 0; i < 14; i++) {
+                          Scenery s = new Scenery();
+                          s.y = (height / 7f) * (i / 2f);
+                          s.leftSide = (i % 2 == 0);
+                          s.kind = rng.nextInt(3);
+                          sceneries.add(s);
+                      }
+                  }
+              }
+
+              private void updatePlayerDimensions() {
+                  if (selectedRide == RIDE_BULLET) {
+                      playerW = laneWidth * 0.44f;
+                      playerH = laneWidth * 0.96f;
+                  } else if (selectedRide == RIDE_TRACTOR) {
+                      playerW = laneWidth * 0.68f;
+                      playerH = laneWidth * 1.18f;
+                  } else {
+                      playerW = laneWidth * 0.58f;
+                      playerH = laneWidth * 1.08f;
+                  }
+              }
+
+              private float laneCenter(int lane) {
+                  return roadLeft + laneWidth * (lane + 0.5f);
+              }
+
+              private void startNewRun() {
+                  obstacles.clear();
+                  pickups.clear();
+                  particles.clear();
+                  floatTexts.clear();
+
+                  updatePlayerDimensions();
+                  playerLane = 1;
+                  playerX = laneCenter(playerLane);
+                  playerTilt = 0f;
+
+                  if (selectedRide == RIDE_TRACTOR) {
+                      maxHp = 4;
+                      baseSpeed = 590f;
+                  } else if (selectedRide == RIDE_BULLET) {
+                      maxHp = 2;
+                      baseSpeed = 720f;
+                  } else {
+                      maxHp = 3;
+                      baseSpeed = 640f;
+                  }
+                  hp = maxHp;
+                  invulnTimer = 0f;
+                  hasShield = false;
+                  nitro = 45f;
+                  nitroActive = false;
+                  hornCooldown = 0f;
+                  hornWaveAlpha = 0f;
+                  distance = 0f;
+                  score = 0;
+                  runCoins = 0;
+                  spawnTimer = 0.6f;
+                  pickupTimer = 0.4f;
+                  shakeTimer = 0f;
+
+                  state = STATE_PLAYING;
+                  sound.playPowerup();
+                  vibrate(35);
+              }
+
+              private void triggerHorn() {
+                  if (hornCooldown > 0f) return;
+                  hornCooldown = 4.0f;
+                  hornWaveRadius = playerW * 0.5f;
+                  hornWaveAlpha = 1f;
+                  sound.playHorn();
+                  vibrate(45);
+                  addFloatText("HORN OK!", playerX, playerY - playerH * 0.7f, Color.rgb(255, 230, 80));
+
+                  float blastRange = height * 0.44f;
+                  for (Obstacle o : obstacles) {
+                      float dy = playerY - o.y;
+                      if (dy > -playerH * 0.5f && dy < blastRange && Math.abs(o.x - playerX) < laneWidth * 1.65f) {
+                          if (o.type == OBS_COW || o.type == OBS_CAR) {
+                              o.scared = true;
+                              o.vx = (o.x < width * 0.5f) ? -width * 0.7f : width * 0.7f;
+                              score += 25;
+                              addFloatText("+25 CLEAR!", o.x, o.y, Color.rgb(120, 255, 190));
+                          }
+                      }
+                  }
+              }
+
+              private void triggerNitro() {
+                  if (nitroActive) return;
+          EOF
+
+      - name: Write GameView part 2
+        run: |
+          cat << 'EOF' >> app/src/main/java/com/maan/desiturbo/GameView.java
+                  if (nitro < 30f) return;
+                  nitroActive = true;
+                  sound.playTurbo();
+                  vibrate(60);
+                  addFloatText("CHAI NITRO!", playerX, playerY - playerH * 0.8f, Color.rgb(255, 145, 40));
+              }
+
+              private void vibrate(int ms) {
+                  if (vibrator == null) return;
+                  try {
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                          vibrator.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
+                      } else {
+                          vibrator.vibrate(ms);
+                      }
+                  } catch (Throwable ignored) {}
+              }
+
+              private void addParticles(float x, float y, int color, int count, float speedScale) {
+                  for (int i = 0; i < count; i++) {
+                      Particle p = new Particle();
+                      double ang = rng.nextDouble() * Math.PI * 2.0;
+                      float spd = (120f + rng.nextFloat() * 340f) * speedScale;
+                      p.x = x;
+                      p.y = y;
+                      p.vx = (float) Math.cos(ang) * spd;
+                      p.vy = (float) Math.sin(ang) * spd;
+                      p.size = 6f + rng.nextFloat() * 12f;
+                      p.maxLife = 0.28f + rng.nextFloat() * 0.35f;
+                      p.life = p.maxLife;
+                      p.color = color;
+                      particles.add(p);
+                  }
+              }
+
+              private void addFloatText(String msg, float x, float y, int color) {
+                  FloatText ft = new FloatText();
+                  ft.text = msg;
+                  ft.x = x;
+                  ft.y = y;
+                  ft.vy = -140f;
+                  ft.life = 0.9f;
+                  ft.color = color;
+                  floatTexts.add(ft);
+              }
+
+              private void update(float dt) {
+                  menuPulse += dt * 3.2f;
+                  if (state == STATE_MENU) {
+                      roadScroll = (roadScroll + 320f * dt) % (height * 0.16f);
+                      updateScenery(320f, dt);
+                      return;
+                  }
+                  if (state != STATE_PLAYING) return;
+
+                  float speedRamp = Math.min(540f, distance * 0.085f);
+                  float targetSpeed = baseSpeed + speedRamp;
+                  if (nitroActive) {
+                      targetSpeed *= 1.72f;
+                      nitro -= dt * 24f;
+                      if (nitro <= 0f) {
+                          nitro = 0f;
+                          nitroActive = false;
+                      }
+                      if (rng.nextFloat() < 0.7f) {
+                          Particle f = new Particle();
+                          f.x = playerX + (rng.nextFloat() - 0.5f) * playerW * 0.45f;
+                          f.y = playerY + playerH * 0.52f;
+                          f.vx = (rng.nextFloat() - 0.5f) * 60f;
+                          f.vy = 320f + rng.nextFloat() * 200f;
+                          f.size = 10f + rng.nextFloat() * 10f;
+                          f.maxLife = 0.25f;
+                          f.life = f.maxLife;
+                          f.color = rng.nextBoolean() ? Color.rgb(255, 160, 20) : Color.rgb(255, 240, 90);
+                          particles.add(f);
+                      }
+                  } else {
+                      nitro = Math.min(100f, nitro + dt * 3.5f);
+                  }
+
+                  currentSpeed += (targetSpeed - currentSpeed) * Math.min(1f, dt * 6f);
+                  float scaleSpeed = currentSpeed * (height / 1800f);
+                  distance += (currentSpeed * dt) * 0.03f;
+                  score += (int) ((currentSpeed * dt) * (nitroActive ? 0.055f : 0.03f));
+
+                  roadScroll = (roadScroll + scaleSpeed * dt) % (height * 0.16f);
+                  updateScenery(scaleSpeed, dt);
+
+                  if (invulnTimer > 0f) invulnTimer = Math.max(0f, invulnTimer - dt);
+                  if (hornCooldown > 0f) hornCooldown = Math.max(0f, hornCooldown - dt);
+                  if (hornWaveAlpha > 0f) {
+                      hornWaveRadius += width * 1.8f * dt;
+                      hornWaveAlpha = Math.max(0f, hornWaveAlpha - dt * 2.1f);
+                  }
+                  if (shakeTimer > 0f) shakeTimer = Math.max(0f, shakeTimer - dt);
+
+                  float targetX = laneCenter(playerLane);
+                  float dx = targetX - playerX;
+                  playerX += dx * Math.min(1f, dt * 15f);
+                  playerTilt = Math.max(-14f, Math.min(14f, dx * 0.09f));
+
+                  spawnTimer -= dt;
+                  if (spawnTimer <= 0f) {
+                      spawnObstacle();
+                      float minGap = Math.max(0.42f, 1.08f - distance * 0.00028f);
+                      spawnTimer = minGap + rng.nextFloat() * 0.42f;
+                  }
+
+                  pickupTimer -= dt;
+                  if (pickupTimer <= 0f) {
+                      spawnPickup();
+                      pickupTimer = 0.75f + rng.nextFloat() * 0.65f;
+                  }
+
+                  Iterator<Obstacle> oIt = obstacles.iterator();
+                  while (oIt.hasNext()) {
+                      Obstacle o = oIt.next();
+                      o.y += scaleSpeed * o.speedFactor * dt;
+                      if (o.scared) o.x += o.vx * dt;
+
+                      if (o.y - o.h > height + 100f || o.x < -width || o.x > width * 2f) {
+                          oIt.remove();
+                          continue;
+                      }
+
+                      if (!o.scared && checkOverlap(playerX, playerY, playerW * 0.78f, playerH * 0.78f, o.x, o.y, o.w * 0.82f, o.h * 0.82f)) {
+                          boolean canSmash = nitroActive || (selectedRide == RIDE_TRACTOR && o.type == OBS_BARRICADE);
+                          if (canSmash) {
+                              oIt.remove();
+                              score += 50;
+                              sound.playSmash();
+                              vibrate(50);
+                              shakeTimer = 0.16f;
+                              shakeMag = 14f;
+                              addParticles(o.x, o.y, Color.rgb(255, 190, 60), 14, 1.1f);
+                              addFloatText("+50 SMASH!", o.x, o.y, Color.rgb(255, 220, 80));
+                          } else if (invulnTimer <= 0f) {
+                              oIt.remove();
+                              if (hasShield) {
+                                  hasShield = false;
+                                  invulnTimer = 1.2f;
+                                  sound.playSmash();
+                                  vibrate(65);
+                                  addParticles(playerX, playerY, Color.rgb(80, 220, 255), 16, 1.0f);
+                                  addFloatText("SHIELD SAVED!", playerX, playerY - playerH, Color.rgb(100, 235, 255));
+                              } else {
+                                  hp--;
+                                  invulnTimer = 1.4f;
+                                  shakeTimer = 0.30f;
+                                  shakeMag = 24f;
+                                  sound.playCrash();
+                                  vibrate(140);
+                                  addParticles(playerX, playerY, Color.rgb(255, 85, 55), 22, 1.3f);
+                                  if (hp <= 0) {
+                                      finishRun();
+                                      return;
+                                  }
+                              }
+                          }
+                      }
+                  }
+
+                  Iterator<Pickup> pIt = pickups.iterator();
+                  while (pIt.hasNext()) {
+                      Pickup p = pIt.next();
+                      p.y += scaleSpeed * 0.86f * dt;
+                      p.phase += dt * 7f;
+                      if (p.y - p.r > height + 80f) {
+                          pIt.remove();
+                          continue;
+                      }
+                      if (checkOverlap(playerX, playerY, playerW, playerH, p.x, p.y, p.r * 2f, p.r * 2f)) {
+                          pIt.remove();
+                          if (p.type == ITEM_COIN) {
+                              int mult = (selectedRide == RIDE_BULLET) ? 2 : 1;
+                              runCoins += mult;
+                              score += 15 * mult;
+                              sound.playCoin();
+                              addParticles(p.x, p.y, Color.rgb(255, 215, 40), 8, 0.7f);
+                              addFloatText("+" + (15 * mult), p.x, p.y, Color.rgb(255, 235, 90));
+                          } else if (p.type == ITEM_CHAI) {
+                              nitro = Math.min(100f, nitro + 42f);
+                              score += 40;
+                              sound.playPowerup();
+                              vibrate(35);
+                              addParticles(p.x, p.y, Color.rgb(255, 165, 50), 12, 0.9f);
+                              addFloatText("CHAI +42%!", p.x, p.y, Color.rgb(255, 190, 80));
+                          } else if (p.type == ITEM_SHIELD) {
+                              hasShield = true;
+                              score += 35;
+                              sound.playPowerup();
+                              vibrate(40);
+                              addParticles(p.x, p.y, Color.rgb(70, 225, 255), 12, 0.9f);
+                              addFloatText("SHIELD ON!", p.x, p.y, Color.rgb(90, 235, 255));
+                          }
+                      }
+                  }
+
+                  Iterator<Particle> ptIt = particles.iterator();
+                  while (ptIt.hasNext()) {
+                      Particle pt = ptIt.next();
+                      pt.x += pt.vx * dt;
+                      pt.y += pt.vy * dt;
+                      pt.life -= dt;
+                      if (pt.life <= 0f) ptIt.remove();
+                  }
+
+                  Iterator<FloatText> ftIt = floatTexts.iterator();
+                  while (ftIt.hasNext()) {
+                      FloatText ft = ftIt.next();
+                      ft.y += ft.vy * dt;
+                      ft.life -= dt;
+                      if (ft.life <= 0f) ftIt.remove();
+                  }
+              }
+
+              private void updateScenery(float speed, float dt) {
+                  for (Scenery s : sceneries) {
+                      s.y += speed * 0.9f * dt;
+                      if (s.y > height + 120f) {
+                          s.y = -120f;
+                          s.kind = rng.nextInt(3);
+                      }
+                  }
+              }
+
+              private void spawnObstacle() {
+                  int lane = rng.nextInt(4);
+                  for (Obstacle existing : obstacles) {
+                      if (existing.y < height * 0.24f && existing.lane == lane) return;
+                  }
+                  Obstacle o = new Obstacle();
+                  o.lane = lane;
+                  o.x = laneCenter(lane);
+                  int roll = rng.nextInt(100);
+                  if (roll < 38) {
+                      o.type = OBS_CAR;
+                      o.w = laneWidth * 0.60f;
+                      o.h = laneWidth * 1.12f;
+                      o.speedFactor = 0.58f + rng.nextFloat() * 0.14f;
+                      int[] carColors = {Color.rgb(235, 75, 75), Color.rgb(65, 165, 245), Color.rgb(245, 245, 245), Color.rgb(180, 95, 235)};
+                      o.color = carColors[rng.nextInt(carColors.length)];
+                  } else if (roll < 64) {
+                      o.type = OBS_TRUCK;
+                      o.w = laneWidth * 0.74f;
+                      o.h = laneWidth * 1.75f;
+                      o.speedFactor = 0.45f;
+                      o.color = rng.nextBoolean() ? Color.rgb(225, 90, 35) : Color.rgb(35, 150, 175);
+                  } else if (roll < 84) {
+                      o.type = OBS_BARRICADE;
+                      o.w = laneWidth * 0.78f;
+                      o.h = laneWidth * 0.44f;
+                      o.speedFactor = 0.90f;
+                      o.color = Color.rgb(245, 195, 30);
+                  } else {
+                      o.type = OBS_COW;
+                      o.w = laneWidth * 0.66f;
+                      o.h = laneWidth * 0.68f;
+                      o.speedFactor = 0.78f;
+                      o.color = Color.rgb(245, 240, 230);
+                  }
+                  o.y = -o.h;
+                  obstacles.add(o);
+              }
+
+              private void spawnPickup() {
+                  int lane = rng.nextInt(4);
+                  int roll = rng.nextInt(100);
+                  if (roll < 72) {
+                      int chain = 3 + rng.nextInt(3);
+                      for (int i = 0; i < chain; i++) {
+                          Pickup p = new Pickup();
+                          p.type = ITEM_COIN;
+                          p.lane = lane;
+                          p.x = laneCenter(lane);
+                          p.y = -80f - i * (laneWidth * 0.62f);
+                          p.r = laneWidth * 0.20f;
+                          p.phase = i * 0.5f;
+                          pickups.add(p);
+                      }
+                  } else {
+                      Pickup p = new Pickup();
+                      p.type = (roll < 90) ? ITEM_CHAI : ITEM_SHIELD;
+                      p.lane = lane;
+                      p.x = laneCenter(lane);
+                      p.y = -90f;
+                      p.r = laneWidth * 0.26f;
+                      pickups.add(p);
+                  }
+              }
+
+              private boolean checkOverlap(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh) {
+          EOF
+
+      - name: Write GameView part 3
+        run: |
+          cat << 'EOF' >> app/src/main/java/com/maan/desiturbo/GameView.java
+                  return Math.abs(ax - bx) * 2f < (aw + bw) && Math.abs(ay - by) * 2f < (ah + bh);
+              }
+
+              private void finishRun() {
+                  state = STATE_GAME_OVER;
+                  if (score > bestScore) bestScore = score;
+                  totalCoins += runCoins;
+                  prefs.edit()
+                      .putInt("best_score", bestScore)
+                      .putInt("total_coins", totalCoins)
+                      .apply();
+              }
+
+              private void drawScene(Canvas c) {
+                  c.save();
+                  if (shakeTimer > 0f) {
+                      float sx = (rng.nextFloat() - 0.5f) * 2f * shakeMag;
+                      float sy = (rng.nextFloat() - 0.5f) * 2f * shakeMag;
+                      c.translate(sx, sy);
+                  }
+
+                  int biome = ((int) (distance / 450f)) % 3;
+                  int shoulderColor = (biome == 0) ? Color.rgb(34, 52, 42) : (biome == 1 ? Color.rgb(24, 22, 44) : Color.rgb(52, 34, 28));
+                  int roadColor = (biome == 1) ? Color.rgb(28, 30, 38) : Color.rgb(42, 44, 50);
+
+                  fillPaint.setColor(shoulderColor);
+                  c.drawRect(0, 0, width, height, fillPaint);
+
+                  fillPaint.setColor(roadColor);
+                  c.drawRect(roadLeft, 0, roadRight, height, fillPaint);
+
+                  // Saffron & white highway kerbs
+                  float kerbW = width * 0.022f;
+                  float dashH = height * 0.08f;
+                  for (float y = roadScroll - dashH * 2f; y < height + dashH; y += dashH) {
+                      int idx = Math.round((y - roadScroll) / dashH);
+                      fillPaint.setColor((idx % 2 == 0) ? Color.rgb(255, 130, 30) : Color.rgb(245, 245, 245));
+                      c.drawRect(roadLeft - kerbW, y, roadLeft, y + dashH, fillPaint);
+                      c.drawRect(roadRight, y, roadRight + kerbW, y + dashH, fillPaint);
+                  }
+
+                  // Lane dashes
+                  fillPaint.setColor(Color.argb(175, 255, 240, 190));
+                  float lineW = Math.max(4f, width * 0.008f);
+                  float dashStep = height * 0.16f;
+                  for (int i = 1; i < 4; i++) {
+                      float lx = roadLeft + laneWidth * i - lineW * 0.5f;
+                      for (float y = roadScroll - dashStep; y < height + dashStep; y += dashStep) {
+                          c.drawRoundRect(lx, y, lx + lineW, y + dashStep * 0.48f, 4f, 4f, fillPaint);
+                      }
+                  }
+
+                  drawScenery(c);
+
+                  // Speed lines during Chai Nitro
+                  if (nitroActive && state == STATE_PLAYING) {
+                      strokePaint.setColor(Color.argb(120, 255, 210, 100));
+                      strokePaint.setStrokeWidth(4f);
+                      for (int i = 0; i < 8; i++) {
+                          float sx = roadLeft + rng.nextFloat() * roadWidth;
+                          float sy = rng.nextFloat() * height;
+                          c.drawLine(sx, sy, sx, sy + 110f, strokePaint);
+                      }
+                  }
+
+                  // Pickups
+                  for (Pickup p : pickups) drawPickup(c, p);
+
+                  // Obstacles
+                  for (Obstacle o : obstacles) drawObstacle(c, o);
+
+                  // Horn shockwave
+                  if (hornWaveAlpha > 0f) {
+                      strokePaint.setColor(Color.argb((int) (hornWaveAlpha * 230), 255, 230, 70));
+                      strokePaint.setStrokeWidth(10f);
+                      c.drawCircle(playerX, playerY, hornWaveRadius, strokePaint);
+                  }
+
+                  // Player
+                  if (state != STATE_MENU) {
+                      boolean blinkHide = (invulnTimer > 0f) && (((int) (invulnTimer * 16f)) % 2 == 0);
+                      if (!blinkHide) drawPlayer(c, playerX, playerY, playerW, playerH, playerTilt, selectedRide);
+                      if (hasShield) {
+                          strokePaint.setColor(Color.argb(210, 80, 235, 255));
+                          strokePaint.setStrokeWidth(7f);
+                          c.drawCircle(playerX, playerY, Math.max(playerW, playerH) * 0.68f, strokePaint);
+                      }
+                  }
+
+                  // Particles
+                  for (Particle pt : particles) {
+                      int a = (int) (255 * Math.max(0f, pt.life / pt.maxLife));
+                      fillPaint.setColor(Color.argb(a, Color.red(pt.color), Color.green(pt.color), Color.blue(pt.color)));
+                      c.drawCircle(pt.x, pt.y, pt.size * (pt.life / pt.maxLife), fillPaint);
+                  }
+
+                  // Floating text
+                  textPaint.setTextAlign(Paint.Align.CENTER);
+                  textPaint.setTextSize(width * 0.044f);
+                  for (FloatText ft : floatTexts) {
+                      int a = (int) (255 * Math.min(1f, ft.life * 1.4f));
+                      textPaint.setColor(Color.argb(a, 0, 0, 0));
+                      c.drawText(ft.text, ft.x + 3, ft.y + 3, textPaint);
+                      textPaint.setColor(Color.argb(a, Color.red(ft.color), Color.green(ft.color), Color.blue(ft.color)));
+                      c.drawText(ft.text, ft.x, ft.y, textPaint);
+                  }
+
+                  c.restore();
+
+                  if (state == STATE_PLAYING || state == STATE_PAUSED) {
+                      drawHUD(c);
+                  }
+                  if (state == STATE_MENU) {
+                      drawMenu(c);
+                  } else if (state == STATE_PAUSED) {
+                      drawPauseOverlay(c);
+                  } else if (state == STATE_GAME_OVER) {
+                      drawGameOver(c);
+                  }
+              }
+
+              private void drawScenery(Canvas c) {
+                  for (Scenery s : sceneries) {
+                      float sx = s.leftSide ? roadLeft * 0.45f : roadRight + (width - roadRight) * 0.55f;
+                      if (s.kind == 0) {
+                          // Tree canopy
+                          fillPaint.setColor(Color.rgb(28, 125, 58));
+                          c.drawCircle(sx, s.y, width * 0.045f, fillPaint);
+                          strokePaint.setColor(Color.rgb(12, 22, 16));
+                          strokePaint.setStrokeWidth(4f);
+                          c.drawCircle(sx, s.y, width * 0.045f, strokePaint);
+                      } else if (s.kind == 1) {
+                          // Streetlamp glow
+                          fillPaint.setColor(Color.argb(70, 255, 200, 80));
+                          c.drawCircle(sx, s.y, width * 0.055f, fillPaint);
+                          fillPaint.setColor(Color.rgb(255, 225, 120));
+                          c.drawCircle(sx, s.y, width * 0.018f, fillPaint);
+                      } else {
+                          // Roadside Dhaba neon board
+                          float bw = width * 0.075f;
+                          float bh = width * 0.042f;
+                          fillPaint.setColor(Color.rgb(220, 45, 95));
+                          c.drawRoundRect(sx - bw * 0.5f, s.y - bh * 0.5f, sx + bw * 0.5f, s.y + bh * 0.5f, 8f, 8f, fillPaint);
+                          strokePaint.setColor(Color.rgb(255, 230, 90));
+                          strokePaint.setStrokeWidth(3f);
+                          c.drawRoundRect(sx - bw * 0.5f, s.y - bh * 0.5f, sx + bw * 0.5f, s.y + bh * 0.5f, 8f, 8f, strokePaint);
+                      }
+                  }
+              }
+
+              private void drawPlayer(Canvas c, float cx, float cy, float w, float h, float tilt, int ride) {
+                  c.save();
+                  c.translate(cx, cy);
+                  c.rotate(tilt);
+
+                  // Headlight beams
+                  fillPaint.setColor(Color.argb(65, 255, 245, 175));
+                  c.drawOval(-w * 0.55f, -h * 1.45f, w * 0.55f, -h * 0.35f, fillPaint);
+
+                  // Drop shadow
+                  fillPaint.setColor(Color.argb(110, 0, 0, 0));
+                  c.drawRoundRect(-w * 0.52f + 7f, -h * 0.48f + 9f, w * 0.52f + 7f, h * 0.52f + 9f, 18f, 18f, fillPaint);
+
+                  if (ride == RIDE_AUTO) {
+                      // Classic Yellow & Green Desi Auto-Rickshaw
+                      fillPaint.setColor(Color.rgb(24, 150, 68));
+                      c.drawRoundRect(-w * 0.5f, -h * 0.48f, w * 0.5f, h * 0.5f, 20f, 20f, fillPaint);
+                      fillPaint.setColor(Color.rgb(255, 205, 20));
+                      c.drawRoundRect(-w * 0.48f, -h * 0.16f, w * 0.48f, h * 0.46f, 16f, 16f, fillPaint);
+                      // Windshield
+                      fillPaint.setColor(Color.rgb(135, 225, 255));
+                      c.drawRoundRect(-w * 0.36f, -h * 0.40f, w * 0.36f, -h * 0.14f, 10f, 10f, fillPaint);
+                      // Headlight
+                      fillPaint.setColor(Color.rgb(255, 250, 180));
+                      c.drawCircle(0, -h * 0.47f, w * 0.14f, fillPaint);
+                  } else if (ride == RIDE_TRACTOR) {
+                      // Heavy Red Desi Tractor Turbo
+                      fillPaint.setColor(Color.rgb(25, 25, 28));
+                      c.drawRoundRect(-w * 0.62f, h * 0.04f, -w * 0.36f, h * 0.48f, 8f, 8f, fillPaint);
+                      c.drawRoundRect(w * 0.36f, h * 0.04f, w * 0.62f, h * 0.48f, 8f, 8f, fillPaint);
+                      fillPaint.setColor(Color.rgb(220, 35, 35));
+                      c.drawRoundRect(-w * 0.36f, -h * 0.48f, w * 0.36f, h * 0.46f, 14f, 14f, fillPaint);
+                      fillPaint.setColor(Color.rgb(245, 210, 50));
+                      c.drawRect(-w * 0.32f, -h * 0.25f, w * 0.32f, -h * 0.15f, fillPaint);
+                      fillPaint.setColor(Color.rgb(45, 45, 50));
+                      c.drawRoundRect(-w * 0.28f, h * 0.05f, w * 0.28f, h * 0.36f, 10f, 10f, fillPaint);
+                  } else {
+                      // Royal Black & Gold Chai Bullet Bike
+                      fillPaint.setColor(Color.rgb(28, 28, 32));
+                      c.drawRoundRect(-w * 0.34f, -h * 0.5f, w * 0.34f, h * 0.5f, 16f, 16f, fillPaint);
+                      // Handlebars
+                      strokePaint.setColor(Color.rgb(215, 220, 230));
+                      strokePaint.setStrokeWidth(7f);
+                      c.drawLine(-w * 0.58f, -h * 0.24f, w * 0.58f, -h * 0.24f, strokePaint);
+                      // Gold fuel tank
+                      fillPaint.setColor(Color.rgb(255, 195, 35));
+                      c.drawOval(-w * 0.30f, -h * 0.22f, w * 0.30f, h * 0.16f, fillPaint);
+                      // Rider helmet
+                      fillPaint.setColor(Color.rgb(235, 65, 45));
+                      c.drawCircle(0, h * 0.14f, w * 0.32f, fillPaint);
+                  }
+
+                  // Bold comic outline
+                  strokePaint.setColor(Color.rgb(15, 15, 18));
+                  strokePaint.setStrokeWidth(5f);
+                  c.drawRoundRect(-w * 0.5f, -h * 0.48f, w * 0.5f, h * 0.5f, 18f, 18f, strokePaint);
+
+                  c.restore();
+              }
+
+              private void drawObstacle(Canvas c, Obstacle o) {
+                  float l = o.x - o.w * 0.5f;
+                  float t = o.y - o.h * 0.5f;
+                  float r = o.x + o.w * 0.5f;
+                  float b = o.y + o.h * 0.5f;
+
+                  if (o.type == OBS_CAR) {
+                      fillPaint.setColor(o.color);
+                      c.drawRoundRect(l, t, r, b, 18f, 18f, fillPaint);
+                      fillPaint.setColor(Color.rgb(40, 55, 75));
+                      c.drawRoundRect(l + o.w * 0.14f, t + o.h * 0.20f, r - o.w * 0.14f, b - o.h * 0.25f, 10f, 10f, fillPaint);
+                      fillPaint.setColor(Color.rgb(255, 50, 50));
+                      c.drawRect(l + 8, b - 10, l + o.w * 0.3f, b - 2, fillPaint);
+                      c.drawRect(r - o.w * 0.3f, b - 10, r - 8, b - 2, fillPaint);
+                  } else if (o.type == OBS_TRUCK) {
+                      fillPaint.setColor(o.color);
+                      c.drawRoundRect(l, t, r, b, 12f, 12f, fillPaint);
+                      fillPaint.setColor(Color.rgb(255, 210, 40));
+                      c.drawRect(l + 6, b - o.h * 0.18f, r - 6, b - 6, fillPaint);
+                      textPaint.setTextAlign(Paint.Align.CENTER);
+                      textPaint.setTextSize(o.w * 0.19f);
+                      textPaint.setColor(Color.rgb(20, 20, 20));
+                      c.drawText("HORN OK", o.x, b - o.h * 0.06f, textPaint);
+                  } else if (o.type == OBS_BARRICADE) {
+                      fillPaint.setColor(Color.rgb(245, 195, 25));
+                      c.drawRoundRect(l, t, r, b, 8f, 8f, fillPaint);
+                      fillPaint.setColor(Color.rgb(25, 25, 25));
+                      for (int i = 0; i < 3; i++) {
+                          float sx = l + o.w * (0.14f + i * 0.30f);
+                          c.drawRect(sx, t + 4, sx + o.w * 0.12f, b - 4, fillPaint);
+                      }
+                  } else {
+                      // Stray cow
+                      fillPaint.setColor(Color.rgb(245, 240, 230));
+                      c.drawRoundRect(l, t + o.h * 0.15f, r, b - o.h * 0.1f, 22f, 22f, fillPaint);
+                      fillPaint.setColor(Color.rgb(120, 82, 52));
+                      c.drawCircle(o.x - o.w * 0.18f, o.y, o.w * 0.16f, fillPaint);
+                      c.drawCircle(o.x + o.w * 0.22f, o.y - o.h * 0.1f, o.w * 0.14f, fillPaint);
+                      fillPaint.setColor(Color.rgb(235, 180, 170));
+                      c.drawOval(o.x - o.w * 0.2f, b - o.h * 0.28f, o.x + o.w * 0.2f, b, fillPaint);
+                  }
+
+                  strokePaint.setColor(Color.rgb(15, 15, 18));
+                  strokePaint.setStrokeWidth(4.5f);
+                  c.drawRoundRect(l, t, r, b, 14f, 14f, strokePaint);
+              }
+
+              private void drawPickup(Canvas c, Pickup p) {
+                  float pulse = 1f + 0.08f * (float) Math.sin(p.phase);
+                  float rad = p.r * pulse;
+                  if (p.type == ITEM_COIN) {
+                      fillPaint.setColor(Color.rgb(255, 205, 25));
+                      c.drawCircle(p.x, p.y, rad, fillPaint);
+                      strokePaint.setColor(Color.rgb(150, 95, 0));
+                      strokePaint.setStrokeWidth(4f);
+                      c.drawCircle(p.x, p.y, rad, strokePaint);
+                      textPaint.setTextAlign(Paint.Align.CENTER);
+                      textPaint.setTextSize(rad * 1.15f);
+                      textPaint.setColor(Color.rgb(120, 65, 0));
+                      c.drawText("₹", p.x, p.y + rad * 0.40f, textPaint);
+                  } else if (p.type == ITEM_CHAI) {
+                      fillPaint.setColor(Color.rgb(255, 125, 25));
+                      c.drawCircle(p.x, p.y, rad * 1.15f, fillPaint);
+                      fillPaint.setColor(Color.rgb(255, 245, 225));
+                      c.drawRoundRect(p.x - rad * 0.55f, p.y - rad * 0.45f, p.x + rad * 0.55f, p.y + rad * 0.6f, 8f, 8f, fillPaint);
+                      fillPaint.setColor(Color.rgb(175, 100, 45));
+                      c.drawRect(p.x - rad * 0.45f, p.y - rad * 0.15f, p.x + rad * 0.45f, p.y + rad * 0.45f, fillPaint);
+                  } else {
+                      fillPaint.setColor(Color.rgb(45, 215, 255));
+                      c.drawCircle(p.x, p.y, rad * 1.15f, fillPaint);
+                      strokePaint.setColor(Color.WHITE);
+                      strokePaint.setStrokeWidth(5f);
+                      c.drawCircle(p.x, p.y, rad * 0.72f, strokePaint);
+                  }
+              }
+
+              private void drawHUD(Canvas c) {
+                  float pad = width * 0.04f;
+                  float topY = height * 0.045f;
+
+                  // Score pill
+                  fillPaint.setColor(Color.argb(185, 14, 16, 24));
+          EOF
+
+      - name: Write GameView part 4
+        run: |
+          cat << 'EOF' >> app/src/main/java/com/maan/desiturbo/GameView.java
+                  c.drawRoundRect(pad, topY, width * 0.56f, topY + height * 0.095f, 22f, 22f, fillPaint);
+                  strokePaint.setColor(Color.rgb(255, 185, 45));
+                  strokePaint.setStrokeWidth(3f);
+                  c.drawRoundRect(pad, topY, width * 0.56f, topY + height * 0.095f, 22f, 22f, strokePaint);
+
+                  textPaint.setTextAlign(Paint.Align.LEFT);
+                  textPaint.setTextSize(width * 0.056f);
+                  textPaint.setColor(Color.WHITE);
+                  c.drawText("" + score, pad + 24f, topY + height * 0.042f, textPaint);
+
+                  textPaint.setTextSize(width * 0.033f);
+                  textPaint.setColor(Color.rgb(255, 215, 70));
+                  c.drawText("₹ " + runCoins + "   " + (int) distance + "m", pad + 24f, topY + height * 0.078f, textPaint);
+
+                  // Hearts
+                  for (int i = 0; i < maxHp; i++) {
+                      fillPaint.setColor(i < hp ? Color.rgb(255, 65, 85) : Color.rgb(75, 75, 85));
+                      c.drawCircle(pad + 22f + i * (width * 0.052f), topY + height * 0.118f, width * 0.019f, fillPaint);
+                  }
+
+                  // Nitro bar
+                  float barX = pad;
+                  float barY = topY + height * 0.145f;
+                  float barW = width * 0.42f;
+                  float barH = height * 0.016f;
+                  fillPaint.setColor(Color.argb(180, 20, 22, 30));
+                  c.drawRoundRect(barX, barY, barX + barW, barY + barH, 10f, 10f, fillPaint);
+                  fillPaint.setColor(nitroActive ? Color.rgb(255, 90, 20) : Color.rgb(255, 185, 40));
+                  c.drawRoundRect(barX, barY, barX + barW * (nitro / 100f), barY + barH, 10f, 10f, fillPaint);
+
+                  // Pause & Mute buttons
+                  drawRoundBtn(c, btnPause, state == STATE_PAUSED ? "▶" : "II", Color.argb(190, 20, 24, 34), Color.WHITE);
+                  drawRoundBtn(c, btnMute, sound.isMuted() ? "🔇" : "🔊", Color.argb(190, 20, 24, 34), Color.WHITE);
+
+                  // Bottom touch buttons: HORN and CHAI NITRO
+                  int hornBg = (hornCooldown <= 0f) ? Color.argb(225, 245, 195, 30) : Color.argb(140, 80, 80, 90);
+                  String hornLbl = (hornCooldown <= 0f) ? "HORN" : String.format(java.util.Locale.US, "%.1fs", hornCooldown);
+                  drawRoundBtn(c, btnHorn, hornLbl, hornBg, Color.rgb(20, 20, 24));
+
+                  int nitroBg = nitroActive ? Color.argb(240, 255, 85, 25) : (nitro >= 30f ? Color.argb(225, 255, 135, 30) : Color.argb(140, 80, 80, 90));
+                  drawRoundBtn(c, btnNitro, nitroActive ? "BOOST!" : "CHAI NITRO", nitroBg, Color.WHITE);
+              }
+
+              private void drawRoundBtn(Canvas c, RectF r, String label, int bg, int fg) {
+                  fillPaint.setColor(bg);
+                  c.drawRoundRect(r, 24f, 24f, fillPaint);
+                  strokePaint.setColor(Color.rgb(18, 18, 22));
+                  strokePaint.setStrokeWidth(4f);
+                  c.drawRoundRect(r, 24f, 24f, strokePaint);
+                  textPaint.setTextAlign(Paint.Align.CENTER);
+                  textPaint.setTextSize(Math.min(r.height() * 0.36f, width * 0.044f));
+                  textPaint.setColor(fg);
+                  c.drawText(label, r.centerX(), r.centerY() + textPaint.getTextSize() * 0.35f, textPaint);
+              }
+
+              private void drawMenu(Canvas c) {
+                  fillPaint.setColor(Color.argb(175, 10, 12, 22));
+                  c.drawRect(0, 0, width, height, fillPaint);
+
+                  textPaint.setTextAlign(Paint.Align.CENTER);
+                  textPaint.setTextSize(width * 0.115f);
+                  textPaint.setColor(Color.rgb(255, 195, 35));
+                  c.drawText("DESI TURBO", width * 0.5f, height * 0.17f, textPaint);
+
+                  textPaint.setTextSize(width * 0.068f);
+                  textPaint.setColor(Color.rgb(95, 235, 155));
+                  c.drawText("GT ROAD RUSH", width * 0.5f, height * 0.225f, textPaint);
+
+                  textPaint.setTextSize(width * 0.038f);
+                  textPaint.setColor(Color.rgb(230, 235, 245));
+                  c.drawText("BEST: " + bestScore + "   •   BANK: ₹" + totalCoins, width * 0.5f, height * 0.28f, textPaint);
+
+                  // Animated showcase of selected ride
+                  float bob = (float) Math.sin(menuPulse) * 10f;
+                  drawPlayer(c, width * 0.5f, height * 0.39f + bob, laneWidth * 0.85f, laneWidth * 1.45f, 0f, selectedRide);
+
+                  textPaint.setTextSize(width * 0.036f);
+                  textPaint.setColor(Color.rgb(255, 220, 110));
+                  c.drawText("CHOOSE YOUR RIDE", width * 0.5f, height * 0.485f, textPaint);
+
+                  drawRideCard(c, btnRide0, "AUTO", "Balanced", RIDE_AUTO);
+                  drawRideCard(c, btnRide1, "TRACTOR", "Smash Wood", RIDE_TRACTOR);
+                  drawRideCard(c, btnRide2, "BULLET", "Fast 2x ₹", RIDE_BULLET);
+
+                  drawRoundBtn(c, btnPlay, "PLAY NOW", Color.rgb(35, 195, 95), Color.WHITE);
+
+                  textPaint.setTextSize(width * 0.033f);
+                  textPaint.setColor(Color.rgb(195, 205, 220));
+                  c.drawText("Swipe or tap left/right to steer • Use Horn & Chai Nitro!", width * 0.5f, height * 0.87f, textPaint);
+              }
+
+              private void drawRideCard(Canvas c, RectF r, String name, String perk, int rideId) {
+                  boolean sel = (selectedRide == rideId);
+                  fillPaint.setColor(sel ? Color.rgb(42, 68, 52) : Color.argb(210, 24, 28, 40));
+                  c.drawRoundRect(r, 20f, 20f, fillPaint);
+                  strokePaint.setColor(sel ? Color.rgb(255, 205, 45) : Color.rgb(85, 95, 115));
+                  strokePaint.setStrokeWidth(sel ? 6f : 3f);
+                  c.drawRoundRect(r, 20f, 20f, strokePaint);
+
+                  drawPlayer(c, r.centerX(), r.top + r.height() * 0.38f, r.width() * 0.34f, r.height() * 0.42f, 0f, rideId);
+
+                  textPaint.setTextAlign(Paint.Align.CENTER);
+                  textPaint.setTextSize(width * 0.036f);
+                  textPaint.setColor(Color.WHITE);
+                  c.drawText(name, r.centerX(), r.bottom - r.height() * 0.22f, textPaint);
+
+                  textPaint.setTextSize(width * 0.027f);
+                  textPaint.setColor(Color.rgb(255, 215, 95));
+                  c.drawText(perk, r.centerX(), r.bottom - r.height() * 0.08f, textPaint);
+              }
+
+              private void drawPauseOverlay(Canvas c) {
+                  fillPaint.setColor(Color.argb(175, 8, 10, 18));
+                  c.drawRect(0, 0, width, height, fillPaint);
+                  textPaint.setTextAlign(Paint.Align.CENTER);
+                  textPaint.setTextSize(width * 0.095f);
+                  textPaint.setColor(Color.WHITE);
+                  c.drawText("PAUSED", width * 0.5f, height * 0.45f, textPaint);
+                  drawRoundBtn(c, btnRestart, "RESUME", Color.rgb(35, 195, 95), Color.WHITE);
+                  drawRoundBtn(c, btnMenu, "MAIN MENU", Color.rgb(65, 75, 95), Color.WHITE);
+              }
+
+              private void drawGameOver(Canvas c) {
+                  fillPaint.setColor(Color.argb(195, 14, 10, 18));
+                  c.drawRect(0, 0, width, height, fillPaint);
+
+                  textPaint.setTextAlign(Paint.Align.CENTER);
+                  textPaint.setTextSize(width * 0.105f);
+                  textPaint.setColor(Color.rgb(255, 95, 70));
+                  c.drawText("CRASHED!", width * 0.5f, height * 0.28f, textPaint);
+
+                  textPaint.setTextSize(width * 0.056f);
+                  textPaint.setColor(Color.WHITE);
+                  c.drawText("SCORE: " + score, width * 0.5f, height * 0.37f, textPaint);
+
+                  textPaint.setTextSize(width * 0.044f);
+                  textPaint.setColor(Color.rgb(255, 215, 70));
+                  c.drawText("BEST: " + bestScore + "   •   COINS: +₹" + runCoins, width * 0.5f, height * 0.435f, textPaint);
+
+                  textPaint.setTextSize(width * 0.038f);
+                  textPaint.setColor(Color.rgb(160, 225, 195));
+                  c.drawText("DISTANCE: " + (int) distance + "m", width * 0.5f, height * 0.495f, textPaint);
+
+                  drawRoundBtn(c, btnRestart, "PLAY AGAIN", Color.rgb(35, 195, 95), Color.WHITE);
+                  drawRoundBtn(c, btnMenu, "CHANGE RIDE", Color.rgb(65, 75, 95), Color.WHITE);
+              }
+
+              @Override
+              public boolean onTouchEvent(MotionEvent e) {
+                  float x = e.getX();
+                  float y = e.getY();
+                  int action = e.getActionMasked();
+
+                  if (action == MotionEvent.ACTION_DOWN) {
+                      touchStartX = x;
+                      touchStartY = y;
+                      swipeHandled = false;
+
+                      if (state == STATE_MENU) {
+                          if (btnRide0.contains(x, y)) selectRide(RIDE_AUTO);
+                          else if (btnRide1.contains(x, y)) selectRide(RIDE_TRACTOR);
+                          else if (btnRide2.contains(x, y)) selectRide(RIDE_BULLET);
+                          else if (btnPlay.contains(x, y)) startNewRun();
+                          return true;
+                      }
+
+                      if (state == STATE_PAUSED) {
+                          if (btnRestart.contains(x, y) || btnPause.contains(x, y)) state = STATE_PLAYING;
+                          else if (btnMenu.contains(x, y)) state = STATE_MENU;
+                          return true;
+                      }
+
+                      if (state == STATE_GAME_OVER) {
+                          if (btnRestart.contains(x, y)) startNewRun();
+                          else if (btnMenu.contains(x, y)) state = STATE_MENU;
+                          return true;
+                      }
+
+                      if (state == STATE_PLAYING) {
+                          if (btnPause.contains(x, y)) {
+                              state = STATE_PAUSED;
+                              swipeHandled = true;
+                              return true;
+                          }
+                          if (btnMute.contains(x, y)) {
+                              sound.toggleMute();
+                              swipeHandled = true;
+                              return true;
+                          }
+                          if (btnHorn.contains(x, y)) {
+                              triggerHorn();
+                              swipeHandled = true;
+                              return true;
+                          }
+                          if (btnNitro.contains(x, y)) {
+                              triggerNitro();
+                              swipeHandled = true;
+                              return true;
+                          }
+                      }
+                  } else if (action == MotionEvent.ACTION_MOVE && state == STATE_PLAYING && !swipeHandled) {
+                      float dx = x - touchStartX;
+                      if (Math.abs(dx) > width * 0.08f) {
+                          if (dx > 0 && playerLane < 3) playerLane++;
+                          else if (dx < 0 && playerLane > 0) playerLane--;
+                          swipeHandled = true;
+                          vibrate(15);
+                      }
+                  } else if (action == MotionEvent.ACTION_UP && state == STATE_PLAYING && !swipeHandled) {
+                      if (Math.abs(x - touchStartX) < width * 0.07f && y > height * 0.16f && y < btnHorn.top - 10f) {
+                          if (x < width * 0.5f && playerLane > 0) {
+                              playerLane--;
+                              vibrate(15);
+                          } else if (x >= width * 0.5f && playerLane < 3) {
+                              playerLane++;
+                              vibrate(15);
+                          }
+                      }
+                  }
+                  return true;
+              }
+
+              private void selectRide(int ride) {
+                  selectedRide = ride;
+                  prefs.edit().putInt("selected_ride", ride).apply();
+                  sound.playCoin();
+                  vibrate(20);
+              }
+
+              @Override
+              public void run() {
+                  long prevTime = System.nanoTime();
+                  while (running) {
+                      if (!surfaceReady) {
+                          try { Thread.sleep(16); } catch (InterruptedException ignored) {}
+                          continue;
+                      }
+                      long now = System.nanoTime();
+                      float dt = Math.min(0.05f, (now - prevTime) / 1_000_000_000f);
+                      prevTime = now;
+
+                      update(dt);
+
+                      Canvas canvas = null;
+                      try {
+                          canvas = holder.lockCanvas();
+                          if (canvas != null) {
+                              synchronized (holder) {
+                                  drawScene(canvas);
+                              }
+                          }
+                      } finally {
+                          if (canvas != null) {
+                              holder.unlockCanvasAndPost(canvas);
+                          }
+                      }
+                  }
+              }
+
+              public void resume() {
+                  running = true;
+                  gameThread = new Thread(this);
+                  gameThread.start();
+              }
+
+              public void pause() {
+                  running = false;
+                  if (state == STATE_PLAYING) state = STATE_PAUSED;
+                  if (gameThread != null) {
+                      try { gameThread.join(500); } catch (InterruptedException ignored) {}
+                      gameThread = null;
+                  }
+              }
+
+              public void release() {
+                  pause();
+                  sound.release();
+              }
+
+              @Override
+              public void surfaceCreated(SurfaceHolder holder) {
+                  surfaceReady = true;
+                  computeLayout(getWidth(), getHeight());
+              }
+
+              @Override
+              public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
+                  computeLayout(w, h);
+              }
+
+              @Override
+              public void surfaceDestroyed(SurfaceHolder holder) {
+                  surfaceReady = false;
+              }
+          }
+          EOF
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Upload Desi Turbo APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DesiTurbo-SamsungA17-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+
